@@ -8,10 +8,12 @@
   v. 1.0, 2013-02-15
 */
 
+#include <ctime>
 #include <iostream>
 #include <iterator>
 #include <string>
 #include <stdexcept>
+#include <mpi.h>
 #include "interval.h"
 #include "functions.h"
 #include "minimizer.h"
@@ -19,7 +21,7 @@
 using namespace std;
 
 
-// Split a 2D box into four subboxes by splitting each dimension
+// Split a 3D box into four subboxes by splitting each dimension
 // into two equal subparts
 void split_box(const interval& x, const interval& y,
 	       interval &xl, interval& xr, interval& yl, interval& yr)
@@ -68,6 +70,7 @@ void minimize(itvfun f,  // Function to minimize
   interval xl, xr, yl, yr;
   split_box(x,y,xl,xr,yl,yr);
 
+
   minimize(f,xl,yl,threshold,min_ub,ml);
   minimize(f,xl,yr,threshold,min_ub,ml);
   minimize(f,xr,yl,threshold,min_ub,ml);
@@ -75,8 +78,9 @@ void minimize(itvfun f,  // Function to minimize
 }
 
 
-int main(void)
+int main(int argc, char* argv[])
 {
+  clock_t debut, fin;
   cout.precision(16);
   // By default, the currently known upper bound for the minimizer is +oo
   double min_ub = numeric_limits<double>::infinity();
@@ -115,15 +119,35 @@ int main(void)
     }
   } while(!good_choice);
 
+
+
+  //Initialize MPI
+
+  int numprocs, rank;
+  MPI_Init(&argc, &argv);
+  MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+
   // Asking for the threshold below which a box is not split further
-  cout << "Precision? ";
-  cin >> precision;
+  if(rank == 0){
+    cout << "Precision? ";
+    cin >> precision;
+  }
+
+  MPI_Bcast(&precision, 1, MPI_INT, 0,MPI_COMM_WORLD );
   
+  debut = clock();
+
   minimize(fun.f,fun.x,fun.y,precision,min_ub,minimums);
   
+  fin = clock();
   // Displaying all potential minimizers
   copy(minimums.begin(),minimums.end(),
        ostream_iterator<minimizer>(cout,"\n"));    
   cout << "Number of minimizers: " << minimums.size() << endl;
   cout << "Upper bound for minimum: " << min_ub << endl;
+
+  MPI_Finalize();
+  cout << "temps : " << (double) (fin-debut)/CLOCKS_PER_SEC << "s" << endl;
 }
