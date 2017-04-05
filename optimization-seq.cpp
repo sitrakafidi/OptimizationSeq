@@ -15,6 +15,7 @@
 #include "interval.h"
 #include "functions.h"
 #include "minimizer.h"
+#include <ctime>
 
 using namespace std;
 
@@ -77,6 +78,7 @@ void minimize(itvfun f,  // Function to minimize
 
 int main(void)
 {
+  clock_t deb , fin ;
   cout.precision(16);
   // By default, the currently known upper bound for the minimizer is +oo
   double min_ub = numeric_limits<double>::infinity();
@@ -118,12 +120,13 @@ int main(void)
   // Asking for the threshold below which a box is not split further
   cout << "Precision? ";
   cin >> precision;
-  
+  deb = clock();
   minimize(fun.f,fun.x,fun.y,precision,min_ub,minimums);
-  
+  fin = clock();
   // Displaying all potential minimizers
   copy(minimums.begin(),minimums.end(),
        ostream_iterator<minimizer>(cout,"\n"));    
   cout << "Number of minimizers: " << minimums.size() << endl;
   cout << "Upper bound for minimum: " << min_ub << endl;
+  cout << "temps : " << (double) (fin-deb)/CLOCKS_PER_SEC << "s" << endl;
 }
