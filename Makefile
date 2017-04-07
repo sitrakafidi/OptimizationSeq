@@ -13,12 +13,12 @@
 COMMON_SOURCES = interval.cpp minimizer.cpp functions.cpp
 COMMON_OBJECTS = $(COMMON_SOURCES:.cpp=.o)
 
-CXXFLAGS = -std=gnu++0x -Wall -I/home/sitraka/Documents/M1ALMA/MulticoreProg/boost_1_63_0/
+CXXFLAGS = -std=gnu++0x -Wall -I/home/steven/Master/Multicore/include
 
 MPICXX = mpic++
 
 
-all: optimization-seq optimization-mpi
+all: optimization-seq optimization-mpi optimization-omp
 
 optimization-seq: optimization-seq.cpp $(COMMON_OBJECTS)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(COMMON_OBJECTS) -lm
@@ -26,8 +26,11 @@ optimization-seq: optimization-seq.cpp $(COMMON_OBJECTS)
 optimization-mpi: optimization-mpi.cpp $(COMMON_OBJECTS)
 	$(MPICXX) $(CXXFLAGS) -fopenmp -o $@ $< $(COMMON_OBJECTS) -lm
 
+optimization-omp: optimization-omp.cpp $(COMMON_OBJECTS)
+	$(CXX) $(CXXFLAGS) -fopenmp -o $@ $< $(COMMON_OBJECTS) -lm
+
 $(COMMON_OBJECTS): %.o: %.cpp %.h
 
 
 clean:
-	-rm optimization-seq optimization-mpi $(COMMON_OBJECTS)
+	-rm optimization-seq optimization-mpi optimization-omp $(COMMON_OBJECTS)
