@@ -43,25 +43,34 @@ void minimize(itvfun f,  // Function to minimize
         double& min_ub,  // Current minimum upper bound
         minimizer_list& ml) // List of current minimizers
 {
+  omp_set_num_threads(4);
+
   interval fxy = f(x,y);
-  
-  if (fxy.left() > min_ub) { // Current box cannot contain minimum?
+
+  if (fxy.left() > min_ub) { // Current box cannot contain minimum? ---- si l'interval ne contient pas le minimum
     return ;
   }
 
-  if (fxy.right() < min_ub) { // Current box contains a new minimum?
+  if (fxy.right() < min_ub) { // Current box contains a new minimum? --- si l'interval contient le minimum
+    /* Discarding all saved boxes whose minimum lower bound is
+     * greater than the new minimum upper bound
+    */
+    /* Only one thread can affect a new value to the variable to avoid conflict */
+    #pragma omp critical
+    {
     min_ub = fxy.right();
-    // Discarding all saved boxes whose minimum lower bound is 
-    // greater than the new minimum upper bound
     auto discard_begin = ml.lower_bound(minimizer{0,0,min_ub,0});
     ml.erase(discard_begin,ml.end());
+    }
   }
 
-  // Checking whether the input box is small enough to stop searching.
+  // Checking whether the input box is small enough to stop searching. ----
   // We can consider the width of one dimension only since a box
   // is always split equally along both dimensions
-  if (x.width() <= threshold) { 
+  if (x.width() <= threshold) {
     // We have potentially a new minimizer
+    /* Only one thread can affect a new value to the variable to avoid conflict */
+    #pragma omp critical
     ml.insert(minimizer{x,y,fxy.left(),fxy.right()});
     return ;
   }
@@ -70,28 +79,44 @@ void minimize(itvfun f,  // Function to minimize
   // and recursively explore them
   interval xl, xr, yl, yr;
   split_box(x,y,xl,xr,yl,yr);
-  
-  //#pragma omp parallel
- // #pragma omp single
+
+  /*#pragma omp parallel
+  //#pragma omp single
   { 
-  
-    //#pragma omp task
+    #pragma omp task
     minimize(f,xl,yl,threshold,min_ub,ml);
     
-   // #pragma omp task
+    #pragma omp task
     minimize(f,xl,yr,threshold,min_ub,ml);
     
-   // #pragma omp task
+    #pragma omp task
     minimize(f,xr,yl,threshold,min_ub,ml);
     
-   // #pragma omp task
+    #pragma omp task
+    minimize(f,xr,yr,threshold,min_ub,ml);
+  }*/
+
+  #pragma omp parallel
+  #pragma omp sections
+  {
+    #pragma omp section
+    minimize(f,xl,yl,threshold,min_ub,ml);
+    #pragma omp section
+    minimize(f,xl,yr,threshold,min_ub,ml);
+    #pragma omp section
+    minimize(f,xr,yl,threshold,min_ub,ml);
+    #pragma omp section
     minimize(f,xr,yr,threshold,min_ub,ml);
   }
+  
+  /*
+  minimize(f,xl,yl,threshold,min_ub,ml);
+  minimize(f,xl,yr,threshold,min_ub,ml);
+  minimize(f,xr,yl,threshold,min_ub,ml);
+  minimize(f,xr,yr,threshold,min_ub,ml);
+  */
+  
 }
-
-
-
-
 
 int main(int argc, char* argv[])
 {
@@ -101,8 +126,6 @@ int main(int argc, char* argv[])
   MPI_Init(&argc, &argv);
   MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-
 
   clock_t debut, fin;
   cout.precision(16);
@@ -183,11 +206,11 @@ int main(int argc, char* argv[])
     
     //Divide interval X
     lx = fun.x.left();
-   // #pragma omp parallel for
+    //#pragma omp parallel for
     for(int i=0; i<numprocs; ++i){
       interval tmp = interval(lx,lx+szX);
-       arrayX[i] = tmp;
-       lx += szX;     
+      arrayX[i] = tmp;
+      lx += szX;     
     }
     //Divide interval Y
     ly = fun.y.left();
@@ -205,16 +228,13 @@ int main(int argc, char* argv[])
   MPI_Bcast(&arrayY, numprocs * sizeof(interval), MPI_BYTE, 0, MPI_COMM_WORLD);
   //Scatter on arrayx
   MPI_Scatter(&arrayX, sizeof(interval), MPI_BYTE, &myslice, sizeof(interval),MPI_BYTE,0,MPI_COMM_WORLD);
-  
-  
+    
   //minimize
+  #pragma omp parallel for
   for(int i=0; i<numprocs ; ++i){
-   // #pragma omp parallel
-    //#pragma omp single
+    //#pragma omp critical
     minimize(fun.f,myslice[0],arrayY[i],precision,localMin_ub,minimums);
   }
-
-
 
   //Reduction
   MPI_Reduce(&localMin_ub, &min_ub, 1, MPI_DOUBLE, MPI_MIN,0, MPI_COMM_WORLD);
@@ -225,7 +245,7 @@ int main(int argc, char* argv[])
     // Displaying all potential minimizers
     //copy(minimums.begin(),minimums.end(),
       //   ostream_iterator<minimizer>(cout,"\n"));    
-   // cout << "Number of minimizers: " << minimums.size() << endl;
+    cout << "Number of minimizers: " << minimums.size() << endl;
     cout << "Upper bound for minimum: " << min_ub << endl;
     cout << "temps : " << (double) (fin-debut)/CLOCKS_PER_SEC << "s" << endl;
   }
